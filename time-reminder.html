@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Time Keeper — 30-Min Reminder</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0d0f;
+    --surface: #14141a;
+    --border: #2a2a38;
+    --accent: #f0c060;
+    --accent2: #e07050;
+    --text: #e8e4d8;
+    --muted: #6a6880;
+    --pulse: #f0c06040;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  /* Grain overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    background-size: 200px;
+    pointer-events: none;
+    z-index: 100;
+    opacity: 0.6;
+  }
+
+  .glow-bg {
+    position: fixed;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, #f0c02015 0%, transparent 70%);
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    animation: breathe 8s ease-in-out infinite;
+  }
+
+  @keyframes breathe {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.5; }
+    50% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
+  }
+
+  .container {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2rem;
+    z-index: 1;
+  }
+
+  .label {
+    font-size: 0.65rem;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .clock-wrapper {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .clock {
+    font-family: 'DM Serif Display', serif;
+    font-size: clamp(4rem, 16vw, 8rem);
+    letter-spacing: -0.02em;
+    line-height: 1;
+    color: var(--text);
+    text-shadow: 0 0 60px #f0c06030;
+    transition: color 0.3s;
+  }
+
+  .clock.flash {
+    animation: flashClock 1s ease-out;
+  }
+
+  @keyframes flashClock {
+    0% { color: var(--accent); text-shadow: 0 0 80px var(--accent), 0 0 120px var(--accent2); }
+    100% { color: var(--text); text-shadow: 0 0 60px #f0c06030; }
+  }
+
+  .date {
+    font-size: 0.75rem;
+    color: var(--muted);
+    letter-spacing: 0.15em;
+  }
+
+  /* Progress ring */
+  .ring-container {
+    position: relative;
+    width: 180px;
+    height: 180px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ring-svg {
+    position: absolute;
+    top: 0; left: 0;
+    transform: rotate(-90deg);
+  }
+
+  .ring-track {
+    fill: none;
+    stroke: var(--border);
+    stroke-width: 3;
+  }
+
+  .ring-progress {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-dasharray: 502;
+    stroke-dashoffset: 502;
+    transition: stroke-dashoffset 1s linear;
+    filter: drop-shadow(0 0 6px var(--accent));
+  }
+
+  .ring-inner {
+    text-align: center;
+  }
+
+  .ring-time {
+    font-size: 2rem;
+    font-family: 'DM Serif Display', serif;
+    color: var(--accent);
+    line-height: 1;
+  }
+
+  .ring-label {
+    font-size: 0.6rem;
+    color: var(--muted);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+  }
+
+  .btn {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 0.7rem 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .btn:hover::after { opacity: 0.08; }
+  .btn:active::after { opacity: 0.18; }
+
+  .btn.primary {
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 20px #f0c06020, inset 0 0 20px #f0c06008;
+  }
+
+  .btn.primary:hover {
+    box-shadow: 0 0 30px #f0c06040, inset 0 0 30px #f0c06015;
+  }
+
+  .status {
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-align: center;
+    height: 1rem;
+  }
+
+  .status .dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    margin-right: 6px;
+    vertical-align: middle;
+    animation: none;
+  }
+
+  .status.active .dot {
+    background: #60e060;
+    box-shadow: 0 0 8px #60e060;
+    animation: blink 2s ease-in-out infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* Notification toast */
+  .toast {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    padding: 1rem 2rem;
+    text-align: center;
+    box-shadow: 0 0 40px #f0c06040;
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    z-index: 200;
+    min-width: 260px;
+  }
+
+  .toast.show {
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .toast-time {
+    font-family: 'DM Serif Display', serif;
+    font-size: 2rem;
+    color: var(--accent);
+    line-height: 1;
+  }
+
+  .toast-msg {
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+
+  .divider {
+    width: 40px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+    margin: 0.5rem auto;
+  }
+
+  /* interval selector */
+  .interval-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .interval-btn {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    padding: 0.4rem 0.8rem;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .interval-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: #f0c06010;
+  }
+
+  .interval-btn:hover {
+    color: var(--text);
+    border-color: var(--text);
+  }
+</style>
+</head>
+<body>
+
+<div class="glow-bg"></div>
+
+<div class="container">
+  <div class="label">Time Keeper</div>
+
+  <div class="clock-wrapper">
+    <div class="clock" id="clock">00:00:00</div>
+    <div class="date" id="dateDisplay">—</div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="ring-container">
+    <svg class="ring-svg" width="180" height="180" viewBox="0 0 180 180">
+      <circle class="ring-track" cx="90" cy="90" r="80"/>
+      <circle class="ring-progress" id="ringProgress" cx="90" cy="90" r="80"/>
+    </svg>
+    <div class="ring-inner">
+      <div class="ring-time" id="countdown">30:00</div>
+      <div class="ring-label">next reminder</div>
+    </div>
+  </div>
+
+  <div class="interval-row">
+    <span class="label">interval:</span>
+    <button class="interval-btn" data-min="10" onclick="setInterval_(10)">10m</button>
+    <button class="interval-btn active" data-min="30" onclick="setInterval_(30)">30m</button>
+    <button class="interval-btn" data-min="60" onclick="setInterval_(60)">60m</button>
+  </div>
+
+  <div class="controls">
+    <button class="btn primary" id="startBtn" onclick="toggleReminder()">Start Reminder</button>
+    <button class="btn" onclick="testReminder()">Test</button>
+  </div>
+
+  <div class="status" id="status">
+    <span class="dot"></span>
+    <span id="statusText">Ready — press Start to begin</span>
+  </div>
+</div>
+
+<div class="toast" id="toast">
+  <div class="toast-msg">Current Time</div>
+  <div class="toast-time" id="toastTime">—</div>
+  <div class="toast-msg" id="toastDate">—</div>
+  <div class="divider"></div>
+  <div id="spokenMsg" style="font-size:0.65rem;color:var(--accent);letter-spacing:0.05em;max-width:280px;line-height:1.5;font-style:italic;margin-top:4px;"></div>
+</div>
+
+<script>
+  let running = false;
+  let intervalMinutes = 30;
+  let intervalSeconds = intervalMinutes * 60;
+  let secondsLeft = intervalSeconds;
+  let ticker = null;
+  let audioCtx = null;
+
+  const clockEl = document.getElementById('clock');
+  const dateEl = document.getElementById('dateDisplay');
+  const countdownEl = document.getElementById('countdown');
+  const ringProgress = document.getElementById('ringProgress');
+  const startBtn = document.getElementById('startBtn');
+  const statusEl = document.getElementById('status');
+  const statusText = document.getElementById('statusText');
+  const toast = document.getElementById('toast');
+  const toastTime = document.getElementById('toastTime');
+  const toastDate = document.getElementById('toastDate');
+
+  const CIRCUMFERENCE = 2 * Math.PI * 80; // ~502.65
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+
+  function getTimeStr() {
+    const now = new Date();
+    return `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  }
+
+  function getShortTime() {
+    const now = new Date();
+    return `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  }
+
+  function getDateStr() {
+    return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  }
+
+  function updateClock() {
+    clockEl.textContent = getTimeStr();
+    dateEl.textContent = getDateStr();
+  }
+
+  function updateRing() {
+    const fraction = secondsLeft / intervalSeconds;
+    const offset = CIRCUMFERENCE * fraction;
+    ringProgress.style.strokeDashoffset = offset;
+
+    const mins = Math.floor(secondsLeft / 60);
+    const secs = secondsLeft % 60;
+    countdownEl.textContent = `${pad(mins)}:${pad(secs)}`;
+  }
+
+  function playChime() {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const notes = [523.25, 659.25, 783.99, 1046.5];
+      notes.forEach((freq, i) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        const start = audioCtx.currentTime + i * 0.18;
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(0.25, start + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.7);
+        osc.start(start);
+        osc.stop(start + 0.75);
+      });
+    } catch(e) {}
+  }
+
+  function speakReminder() {
+    if (!('speechSynthesis' in window)) return;
+
+    const now = new Date();
+    let hours = now.getHours();
+    const minutes = now.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+    const minStr = minutes === 0 ? "o'clock" : `${minutes}`;
+    const timeStr = `${hours}${minutes === 0 ? '' : ' ' + minStr} ${ampm}`;
+
+    const messages = [
+      `Abhi time hai ${timeStr}. Bohot saara kaam baki hai, focus Manish focus!`,
+      `${timeStr} ho gaya hai Manish. Uth, kaam kar, focus kar!`,
+      `Attention Manish! Time is ${timeStr}. Kaam pe dhyan do, bilkul focus raho!`,
+      `${timeStr} baj gaye hain. Manish, bohot kaam baaki hai — focus focus focus!`,
+    ];
+
+    const msg = messages[Math.floor(Math.random() * messages.length)];
+    const utter = new SpeechSynthesisUtterance(msg);
+
+    // Try to find a Hindi or Indian English voice, fallback to default
+    const voices = window.speechSynthesis.getVoices();
+    const hindiVoice = voices.find(v => v.lang.startsWith('hi'));
+    const indianVoice = voices.find(v => v.lang === 'en-IN');
+    const femaleVoice = voices.find(v => v.name.toLowerCase().includes('female') || v.name.includes('Samantha') || v.name.includes('Zira'));
+
+    if (hindiVoice) utter.voice = hindiVoice;
+    else if (indianVoice) utter.voice = indianVoice;
+    else if (femaleVoice) utter.voice = femaleVoice;
+
+    utter.rate = 0.88;
+    utter.pitch = 1.05;
+    utter.volume = 1;
+
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utter);
+
+    // Update the toast message to show what was spoken
+    document.getElementById('spokenMsg').textContent = `"${msg}"`;
+  }
+
+  function showToast() {
+    const t = getShortTime();
+    toastTime.textContent = t;
+    toastDate.textContent = getDateStr();
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 5000);
+
+    // Flash clock
+    clockEl.classList.remove('flash');
+    void clockEl.offsetWidth;
+    clockEl.classList.add('flash');
+  }
+
+  function sendNotification(timeStr) {
+    if (Notification.permission === 'granted') {
+      new Notification('⏰ Time Check!', {
+        body: `Current time: ${timeStr}`,
+        icon: 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/23f0.png',
+        silent: false
+      });
+    }
+  }
+
+  function triggerReminder() {
+    const t = getShortTime();
+    playChime();
+    showToast();
+    sendNotification(t);
+    // Speak after a short delay so chime plays first
+    setTimeout(speakReminder, 1200);
+  }
+
+  function tick() {
+    secondsLeft--;
+    if (secondsLeft <= 0) {
+      triggerReminder();
+      secondsLeft = intervalSeconds;
+    }
+    updateRing();
+  }
+
+  function setInterval_(mins) {
+    intervalMinutes = mins;
+    intervalSeconds = mins * 60;
+    secondsLeft = intervalSeconds;
+    updateRing();
+
+    document.querySelectorAll('.interval-btn').forEach(b => {
+      b.classList.toggle('active', parseInt(b.dataset.min) === mins);
+    });
+
+    if (running) {
+      statusText.textContent = `Reminding every ${mins} min — next in ${mins}:00`;
+    }
+  }
+
+  function toggleReminder() {
+    if (!running) {
+      // Request notification permission
+      if (Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+      running = true;
+      secondsLeft = intervalSeconds;
+      updateRing();
+      ticker = setInterval(tick, 1000);
+      startBtn.textContent = 'Stop Reminder';
+      statusEl.classList.add('active');
+      statusText.textContent = `Reminding every ${intervalMinutes} min`;
+    } else {
+      running = false;
+      clearInterval(ticker);
+      secondsLeft = intervalSeconds;
+      updateRing();
+      startBtn.textContent = 'Start Reminder';
+      statusEl.classList.remove('active');
+      statusText.textContent = 'Ready — press Start to begin';
+    }
+  }
+
+  function testReminder() {
+    triggerReminder();
+  }
+
+  // Live clock (every second)
+  updateClock();
+  setInterval(updateClock, 1000);
+  updateRing();
+
+  // Preload voices
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.getVoices();
+    window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+  }
+</script>
+</body>
+</html>
